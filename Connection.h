@@ -109,21 +109,6 @@ namespace conn
 		Message(PlayerID senderId, MessageID messageId, String message) : senderId(senderId), messageId(messageId), message(message) {}
 	};
 
-	/*
-	* Проверяет сообщение на удовлетворение требованиям
-	* Сообщение может содержать только буквы русского и английского алфавита, цифры, пробел, тире и нижнее подчёркивание
-	*/
-	bool IsValidMessage(String message);
-
-	const size_t MAX_NICKNAME_SIZE = 16;
-	/*
-	* Проверяет имя на удовлетворение требованиям
-	* Имя может содержать только буквы русского и английского алфавита, цифры, пробел, тире и нижнее подчёркивание
-	* Длина имени не должна быть больше MAX_NICKNAME_SIZE
-	* Если MAX_NICKNAME_SIZE == -1, проверка на длину имени не производится
-	*/
-	bool IsValidNickname(String nickname);
-
 	namespace beast = boost::beast;         // from <boost/beast.hpp>
 	namespace http = beast::http;           // from <boost/beast/http.hpp>
 	namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
@@ -131,11 +116,26 @@ namespace conn
 	using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
 	/*
-	* Класс поддерживающий соединение с сервером
+	* Базовый класс для соединения с сервером
 	*/
-	class Connection
+	class GameConnection
 	{
 	public:
+		/*
+		* Проверяет сообщение на удовлетворение требованиям
+		* Сообщение может содержать только буквы русского и английского алфавита, цифры, пробел, тире и нижнее подчёркивание
+		*/
+		static bool IsValidMessage(String message);
+
+		static const size_t MAX_NICKNAME_SIZE = 16;
+		/*
+		* Проверяет имя на удовлетворение требованиям
+		* Имя может содержать только буквы русского и английского алфавита, цифры, пробел, тире и нижнее подчёркивание
+		* Длина имени не должна быть больше MAX_NICKNAME_SIZE
+		* Если MAX_NICKNAME_SIZE == -1, проверка длины имени не производится
+		*/
+		static bool IsValidNickname(String nickname);
+
 		/*
 		* Текущий статус соединения
 		*/
@@ -163,84 +163,17 @@ namespace conn
 			*/
 			InGame,
 		};
-	private:
-		std::string url, port;
 
-		net::io_context ioc;
-		tcp::resolver resolver;
-		websocket::stream<tcp::socket> ws;
-		const net::ip::basic_resolver_results<tcp> results;
-
-		std::mutex dataMutex;
-
-		State state;
-
-		PlayerID id;
-
-		std::unordered_map<MessageID, String> responses;
-
-		std::string listResponse;
-		bool listUpdated;
-
-		// Все приглашения игры от других игроков
-		std::vector<PlayerID> offers;
-
-		// ID оппонента
-		PlayerID opponentID;
-
-		// Возвращает уникальное ID для сообщения
-		MessageID GetMessageID();
-
-		// Все необработанные сообщения
-		std::unordered_map<MessageID, Message> unparsedMessages;
-
-#ifdef _DEBUG
-		// Все обработанные сообщения
-		std::set<Message> parsedMessages;
-#endif
-
-		bool stopRecieving;
-		std::thread recieverThread;
-
-
-		void ParseServerMessage(std::string message);
-		void ParseResponse(std::string id, std::string message);
-
-		void ParseMessage(std::string message);
-
-		beast::flat_buffer buffer;
-		void MessageHandler(beast::error_code const& ec, std::size_t bytes_written);
-
-		void RecieveMessages();
-
-		void Connect();
-
-		void Send(String message);
-		void Send(String command, String data);
-	public:
 		// Стандартный адрес сервера
 		static const std::string DEFAULT_URL;
 		// Стандартный порт для подключения
 		static const std::string DEFAULT_PORT;
 
 		/*
-		* Создаёт соединение между клиентом и сервером
-		* При неудачном соединении генерирует ConnectionException
-		* В качесте адреса будет использован DEFAULT_URL, в качестве порта - DEFAULT_PORT
-		*/
-		Connection();
-
-		/*
-		* Создаёт соединение между клиентом и сервером
-		* При неудачном соединении генерирует ConnectionException
-		*/
-		Connection(std::string url, std::string port);
-
-		/*
 		* Закрывает соединение с сервером
 		* Завершает игру и выходит из поиска если это необходимо
 		*/
-		~Connection();
+		virtual ~GameConnection();
 
 		/*
 		* Возвращает текущий статус соединения
@@ -248,17 +181,18 @@ namespace conn
 		State GetState();
 
 		/*
+		* Возвращает ID игрока
+		* Если пользователь не зарегестрирован, генерирует StateException
+		*/
+		PlayerID GetID();
+
+
+		/*
 		* Регистрирует игрока на сервере и изменяет статус на поиск оппонента
 		* Если имя не удовлетворяет требованиям или игрок с таким именем уже зарегестрирован, генерирует NicknameException
 		* Проверить имя на удовлетворение требованиям можно с помощью функции IsValidNickname
 		*/
 		void Register(String nickname);
-
-		/*
-		* Возвращает ID игрока
-		* Если пользователь не зарегестрирован, генерирует StateException
-		*/
-		PlayerID GetID();
 
 		/*
 		* Возвращает список всех игроков, находящихся в поиске игры
@@ -318,5 +252,121 @@ namespace conn
 		* Если пользователь не находится в игре, генерирует StateException
 		*/
 		void EndGame();
+	protected:
+		State state;
+		PlayerID id;
+
+		virtual void					_Register(String nickname) = 0;
+		virtual std::vector<Player>		_GetPlayers() = 0;
+		virtual void					_SendOffer(PlayerID sendTo) = 0;
+		virtual std::vector<PlayerID>	_GetOffers() = 0;
+		virtual std::vector<Message>	_GetMessages() = 0;
+		virtual void					_RemoveMessage(MessageID id) = 0;
+
+#ifdef _DEBUG
+		virtual std::vector<Message>	_GetParsedMessages() = 0;
+		virtual std::vector<Message>	_GetAllMessages() = 0;
+#endif
+
+		virtual void					_SendMessage(String message) = 0;
+		virtual void					_EndGame() = 0;
+	};
+
+
+	/*
+	* Класс поддерживающий соединение с сервером использую веб сокеты
+	* Принимает сообщения асинхронно
+	*/
+	class WebSocketAsyncGameConnection : public GameConnection
+	{
+	private:
+		std::string url, port;
+
+		net::io_context ioc;
+		tcp::resolver resolver;
+		websocket::stream<tcp::socket> ws;
+		const net::ip::basic_resolver_results<tcp> results;
+
+		std::mutex dataMutex;
+
+		std::unordered_map<MessageID, String> responses;
+
+		std::string listResponse;
+		bool listUpdated;
+
+		// Все приглашения игры от других игроков
+		std::vector<PlayerID> offers;
+
+		// ID оппонента
+		PlayerID opponentID;
+
+		// Возвращает уникальное ID для сообщения
+		MessageID GetMessageID();
+
+		// Все необработанные сообщения
+		std::unordered_map<MessageID, Message> unparsedMessages;
+
+#ifdef _DEBUG
+		// Все обработанные сообщения
+		std::set<Message> parsedMessages;
+#endif
+
+		bool stopRecieving;
+		std::thread recieverThread;
+
+
+		void ParseServerMessage(std::string message);
+		void ParseResponse(std::string id, std::string message);
+
+		void ParseMessage(std::string message);
+
+		beast::flat_buffer buffer;
+		void MessageHandler(beast::error_code const& ec, std::size_t bytes_written);
+
+		void RecieveMessages();
+
+		void Connect();
+
+		void Send(String message);
+		void Send(String command, String data);
+	public:
+		// Стандартный адрес сервера
+		static const std::string DEFAULT_URL;
+		// Стандартный порт для подключения
+		static const std::string DEFAULT_PORT;
+
+		/*
+		* Создаёт соединение между клиентом и сервером
+		* При неудачном соединении генерирует ConnectionException
+		* В качесте адреса будет использован DEFAULT_URL, в качестве порта - DEFAULT_PORT
+		*/
+		WebSocketAsyncGameConnection();
+
+		/*
+		* Создаёт соединение между клиентом и сервером
+		* При неудачном соединении генерирует ConnectionException
+		*/
+		WebSocketAsyncGameConnection(std::string url, std::string port);
+
+		/*
+		* Закрывает соединение с сервером
+		* Завершает игру и выходит из поиска если это необходимо
+		*/
+		~WebSocketAsyncGameConnection();
+	protected:
+		void					_Register(String nickname);
+		std::vector<Player>		_GetPlayers();
+		void					_SendOffer(PlayerID sendTo);
+		std::vector<PlayerID>	_GetOffers();
+		std::vector<Message>	_GetMessages();
+		void					_RemoveMessage(MessageID id);
+
+#ifdef _DEBUG
+		std::vector<Message>	_GetParsedMessages();
+		std::vector<Message>	_GetAllMessages();
+#endif
+
+		void					_SendMessage(String message);
+		void					_EndGame();
 	};
 }

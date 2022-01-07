@@ -32,29 +32,6 @@ namespace conn
 		return a.messageId < b.messageId;
 	}
 
-	bool IsValidMessage(String message)
-	{
-		for (auto& c : message)
-		{
-			if ((c >= 'à' && c <= 'ÿ') || (c >= 'À' && c <= 'ß') ||
-				(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-				(c >= '0' && c <= '9') ||
-				c == ' ' || c == '-' || c == '_')
-				continue;
-			return false;
-		}
-		return true;
-	}
-
-	bool IsValidNickname(String nickname)
-	{
-		if (MAX_NICKNAME_SIZE != -1)
-			return IsValidMessage(nickname);
-		else
-			return nickname.size() <= MAX_NICKNAME_SIZE && IsValidMessage(nickname);
-	}
-
-
 	const String SERVER_ERROR = "error: server error"; // any server error begins with this string
 
 	// v client input errors v
@@ -85,7 +62,152 @@ namespace conn
 	const String COMMAND_END_GAME = "end game";
 	// ^ commands from the player ^
 
-	void Connection::ParseServerMessage(std::string message)
+
+	bool GameConnection::IsValidMessage(String message)
+	{
+		for (auto& c : message)
+		{
+			if ((c >= 'à' && c <= 'ÿ') || (c >= 'À' && c <= 'ß') ||
+				(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') ||
+				c == ' ' || c == '-' || c == '_')
+				continue;
+			return false;
+		}
+		return true;
+	}
+	bool GameConnection::IsValidNickname(String nickname)
+	{
+		if (MAX_NICKNAME_SIZE != -1)
+			return IsValidMessage(nickname);
+		else
+			return nickname.size() <= MAX_NICKNAME_SIZE && IsValidMessage(nickname);
+	}
+
+	GameConnection::~GameConnection() {}
+
+	GameConnection::State GameConnection::GetState()
+	{
+		return state;
+	}
+	PlayerID GameConnection::GetID()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() == State::Registration)
+			throw StateException("Wrong state: player must be registered");
+
+		return id;
+	}
+
+	void GameConnection::Register(String nickname)
+	{
+		if (!IsValidNickname(nickname))
+			throw NicknameException("Invalid nickname");
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::Registration)
+			throw StateException("Wrong state: player must not be registered");
+
+		_Register(nickname);
+	}
+
+
+	std::vector<Player> GameConnection::GetPlayers()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::Searching)
+			throw StateException("Wrong state: player must be in search for the game");
+
+		return _GetPlayers();
+	}
+
+	void GameConnection::SendOffer(PlayerID sendTo)
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::Searching)
+			throw StateException("Wrong state: player must be in search for the game");
+
+		_SendOffer(sendTo);
+	}
+	std::vector<PlayerID> GameConnection::GetOffers()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::Searching)
+			throw StateException("Wrong state: player must be in search for the game");
+
+		return _GetOffers();
+	}
+
+	std::vector<Message> GameConnection::GetMessages()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+
+		return _GetMessages();
+	}
+	void GameConnection::RemoveMessage(MessageID id)
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+		
+		_RemoveMessage(id);
+	}
+
+#ifdef _DEBUG
+	std::vector<Message> GameConnection::GetParsedMessages()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+
+		_GetParsedMessages();
+	}
+
+	std::vector<Message> GameConnection::GetAllMessages()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+		
+		_GetAllMessages();
+	}
+#endif
+
+	void GameConnection::SendMessage(String message)
+	{
+		if (!IsValidMessage(message))
+			throw MessageException("Invalid message");
+
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+
+		_SendMessage(message);
+	}
+
+	void GameConnection::EndGame()
+	{
+		if (GetState() == State::NotConnected)
+			throw StateException("Wrong state: connection to the server is not established");
+		if (GetState() != State::InGame)
+			throw StateException("Wrong state: player must be in the game");
+
+		_EndGame();
+	}
+
+
+	void WebSocketAsyncGameConnection::ParseServerMessage(std::string message)
 	{
 		if (StartsWith(message, PLAYER_ID))
 		{
@@ -135,12 +257,12 @@ namespace conn
 			throw UnhandledServerMessageException("Unrecognised server message: " + message);
 		}
 	}
-	void Connection::ParseResponse(std::string id, std::string message)
+	void WebSocketAsyncGameConnection::ParseResponse(std::string id, std::string message)
 	{
 		MessageID messageID = std::stoi(id);
 		responses[messageID] = message;
 	}
-	void Connection::ParseMessage(std::string message)
+	void WebSocketAsyncGameConnection::ParseMessage(std::string message)
 	{
 		auto at = message.find('@');
 		std::string id = message.substr(0, at);
@@ -153,7 +275,7 @@ namespace conn
 			ParseResponse(id, message);
 	}
 
-	void Connection::MessageHandler(
+	void WebSocketAsyncGameConnection::MessageHandler(
 		beast::error_code const& ec,		// Result of operation
 		std::size_t bytes_written			// Number of bytes appended to buffer
 	)
@@ -172,7 +294,7 @@ namespace conn
 			});
 	}
 
-	void Connection::RecieveMessages()
+	void WebSocketAsyncGameConnection::RecieveMessages()
 	{
 		while (!stopRecieving)
 		{
@@ -183,7 +305,7 @@ namespace conn
 		}
 	}
 
-	void Connection::Connect()
+	void WebSocketAsyncGameConnection::Connect()
 	{
 		state = State::NotConnected;
 		try
@@ -227,13 +349,13 @@ namespace conn
 		}
 	}
 
-	MessageID Connection::GetMessageID()
+	MessageID WebSocketAsyncGameConnection::GetMessageID()
 	{
 		static MessageID nextMessageID = 0;
 		return nextMessageID++;
 	}
 
-	void Connection::Send(String message)
+	void WebSocketAsyncGameConnection::Send(String message)
 	{
 		MessageID messageID = GetMessageID();
 
@@ -274,60 +396,34 @@ namespace conn
 			throw ConnectionException(e.what());
 		}
 	}
-	void Connection::Send(String command, String data)
+	void WebSocketAsyncGameConnection::Send(String command, String data)
 	{
 		Send(command + ':' + data);
 	}
 
-	Connection::Connection() : url(DEFAULT_URL), port(DEFAULT_PORT), resolver(ioc), ws(ioc), results(resolver.resolve(url, port))
+	WebSocketAsyncGameConnection::WebSocketAsyncGameConnection() : url(DEFAULT_URL), port(DEFAULT_PORT), resolver(ioc), ws(ioc), results(resolver.resolve(url, port))
 	{
 		Connect();
 	}
-	Connection::Connection(std::string url, std::string port) : url(url), port(port), resolver(ioc), ws(ioc), results(resolver.resolve(url, port))
+	WebSocketAsyncGameConnection::WebSocketAsyncGameConnection(std::string url, std::string port) : url(url), port(port), resolver(ioc), ws(ioc), results(resolver.resolve(url, port))
 	{
 		Connect();
 	}
-	Connection::~Connection()
+	WebSocketAsyncGameConnection::~WebSocketAsyncGameConnection()
 	{
 		stopRecieving = true;
 		recieverThread.join();
 	}
 
-	Connection::State Connection::GetState()
+	void WebSocketAsyncGameConnection::_Register(String nickname)
 	{
-		return this->state;
-	}
-
-	void Connection::Register(String nickname)
-	{
-		if (!IsValidNickname(nickname))
-			throw NicknameException("Invalid nickname");
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::Registration)
-			throw StateException("Wrong state: player must not be registered");
-
 		Send(COMMAND_REGISTER, nickname);
 		state = State::Searching;
 	}
 
-	PlayerID Connection::GetID()
-	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() == State::Registration)
-			throw StateException("Wrong state: player must be registered");
 
-		return this->id;
-	}
-
-	std::vector<Player> Connection::GetPlayers()
+	std::vector<Player> WebSocketAsyncGameConnection::_GetPlayers()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::Searching)
-			throw StateException("Wrong state: player must be in search for the game");
-		
 		listUpdated = false;
 		Send(COMMAND_LIST);
 
@@ -353,32 +449,17 @@ namespace conn
 		return res;
 	}
 
-	void Connection::SendOffer(PlayerID sendTo)
+	void WebSocketAsyncGameConnection::_SendOffer(PlayerID sendTo)
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::Searching)
-			throw StateException("Wrong state: player must be in search for the game");
-
 		Send(COMMAND_OFFER, sendTo);
 	}
-	std::vector<PlayerID> Connection::GetOffers()
+	std::vector<PlayerID> WebSocketAsyncGameConnection::_GetOffers()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::Searching)
-			throw StateException("Wrong state: player must be in search for the game");
-
 		return offers;
 	}
 
-	std::vector<Message> Connection::GetMessages()
+	std::vector<Message> WebSocketAsyncGameConnection::_GetMessages()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		std::vector<Message> res;
 		res.reserve(unparsedMessages.size());
 
@@ -389,13 +470,8 @@ namespace conn
 
 		return res;
 	}
-	void Connection::RemoveMessage(MessageID id)
+	void WebSocketAsyncGameConnection::_RemoveMessage(MessageID id)
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		std::lock_guard<std::mutex> lock(dataMutex);
 		if (unparsedMessages.count(id) == 0)
 			throw UnknownMessageIdException("Unknown message id: " + std::to_string(id));
@@ -407,24 +483,14 @@ namespace conn
 	}
 
 #ifdef _DEBUG
-	std::vector<Message> Connection::GetParsedMessages()
+	std::vector<Message> WebSocketAsyncGameConnection::_GetParsedMessages()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		std::lock_guard<std::mutex> lock(dataMutex);
 		return std::vector<Message>(parsedMessages.begin(), parsedMessages.end());
 	}
 
-	std::vector<Message> Connection::GetAllMessages()
+	std::vector<Message> WebSocketAsyncGameConnection::_GetAllMessages()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		std::vector<Message> allMessages = GetMessages();
 		std::vector<Message> parsedMessages = GetParsedMessages();
 		allMessages.insert(allMessages.begin(), parsedMessages.begin(), parsedMessages.end());
@@ -432,31 +498,18 @@ namespace conn
 	}
 #endif
 
-	void Connection::SendMessage(String message)
+	void WebSocketAsyncGameConnection::_SendMessage(String message)
 	{
-		if (!IsValidMessage(message))
-			throw MessageException("Invalid message");
-
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		Send(COMMAND_MESSAGE, message);
 	}
 
-	void Connection::EndGame()
+	void WebSocketAsyncGameConnection::_EndGame()
 	{
-		if (GetState() == State::NotConnected)
-			throw StateException("Wrong state: connection to the server is not established");
-		if (GetState() != State::InGame)
-			throw StateException("Wrong state: player must be in the game");
-
 		Send(COMMAND_END_GAME);
 		state = State::Searching;
 	}
 
-	const std::string Connection::DEFAULT_URL = "aspidera-isitstoneserver.azurewebsites.net";
-	const std::string Connection::DEFAULT_PORT = "80";
+	const std::string WebSocketAsyncGameConnection::DEFAULT_URL = "aspidera-isitstoneserver.azurewebsites.net";
+	const std::string WebSocketAsyncGameConnection::DEFAULT_PORT = "80";
 }
 

@@ -3,22 +3,22 @@
 #include <iostream>
 #include <conio.h>
 
-using namespace wsc;
+using namespace conn;
 
-std::ostream& operator<< (std::ostream& out, Connection::State state)
+std::ostream& operator<< (std::ostream& out, GameConnection::State state)
 {
 	switch (state)
 	{
-	case wsc::Connection::State::NotConnected:
+	case GameConnection::State::NotConnected:
 		out << "Not connected";
 		break;
-	case wsc::Connection::State::Registration:
+	case GameConnection::State::Registration:
 		out << "Registration";
 		break;
-	case wsc::Connection::State::Searching:
+	case GameConnection::State::Searching:
 		out << "Searching";
 		break;
-	case wsc::Connection::State::InGame:
+	case GameConnection::State::InGame:
 		out << "In game";
 		break;
 	}
@@ -29,12 +29,12 @@ int main()
 {
 	try
 	{
-		Connection con;
+		GameConnection* con = new WebSocketAsyncGameConnection();
 
 		std::cout << "Enter nickname: ";
 		String nickname; std::cin >> nickname;
 
-		con.Register(nickname);
+		con->Register(nickname);
 		std::cerr << "registration complete" << std::endl;
 
 		while (true)
@@ -59,11 +59,11 @@ int main()
 			}
 			else if (id == 1)
 			{
-				std::cout << con.GetState() << std::endl;
+				std::cout << con->GetState() << std::endl;
 			}
 			else if (id == 2)
 			{
-				auto players = con.GetPlayers();
+				auto players = con->GetPlayers();
 				std::cerr << "players:" << std::endl;
 				for (auto& p : players)
 					std::cout << p.id << ":" << p.nickname << std::endl;
@@ -71,27 +71,27 @@ int main()
 			else if (id == 3)
 			{
 				PlayerID pid; std::cin >> pid;
-				con.SendOffer(pid);
+				con->SendOffer(pid);
 			}
 			else if (id == 4)
 			{
 				String m; std::cin >> m;
-				con.SendMessage(m);
+				con->SendMessage(m);
 			}
 			else if (id == 5)
 			{
-				auto messages = con.GetMessages();
+				auto messages = con->GetMessages();
 				for (auto& p : messages)
 					std::cout << p.messageId << ":" << p.message << std::endl;
 			}
 			else if (id == 6)
 			{
 				MessageID mid; std::cin >> mid;
-				con.RemoveMessage(mid);
+				con->RemoveMessage(mid);
 			}
 			else if (id == 7)
 			{
-				con.EndGame();
+				con->EndGame();
 			}
 			else {
 				std::cout << "Unknown command" << std::endl;
@@ -113,4 +113,5 @@ int main()
 	}
 	std::cout << "Press any key to exit...";
 	_getch();
+	return 0;
 }
