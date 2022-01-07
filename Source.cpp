@@ -29,7 +29,7 @@ int main()
 {
 	try
 	{
-		Connection con("localhost", "1337");
+		Connection con;
 
 		std::cout << "Enter nickname: ";
 		String nickname; std::cin >> nickname;

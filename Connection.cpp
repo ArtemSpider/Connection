@@ -5,7 +5,7 @@
 #undef ERROR
 #undef ERROR_INVALID_MESSAGE
 
-namespace wsc
+namespace conn
 {
 	std::vector<std::string> SplitBy(std::string const& str, const char delim)
 	{
@@ -250,6 +250,7 @@ namespace wsc
 				{
 					response = responses[messageID];
 					responses.erase(messageID);
+					dataMutex.unlock();
 					break;
 				}
 				dataMutex.unlock();

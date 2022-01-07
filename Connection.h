@@ -4,10 +4,14 @@
 #include <string>
 #include <vector>
 
+// Отключить предупреждения в этих библиотеках
+#pragma warning(push, 0)  
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#pragma warning(pop)
+
 #include <cstdlib>
 #include <unordered_map>
 #include <set>
@@ -16,7 +20,7 @@
 
 #undef SendMessage
 
-namespace wsc
+namespace conn
 {
 	class ConnectionException : public std::exception
 	{
