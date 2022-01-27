@@ -1,4 +1,4 @@
-#include "Connection.h"
+#include "Connection.hpp"
 
 #include <iostream>
 #include <conio.h>
