@@ -1,6 +1,4 @@
-#pragma warning(push, 0)
-#include "Connection.h"
-#pragma warning(pop)
+#include "Connection.hpp"
 
 #include <iostream>
 #include <conio.h>
