@@ -509,7 +509,7 @@ namespace conn
 		state = State::Searching;
 	}
 
-	const std::string WebSocketAsyncGameConnection::DEFAULT_URL = "localhost";
+	const std::string WebSocketAsyncGameConnection::DEFAULT_URL = "aspidera-isitstoneserver.azurewebsites.net";
 	const std::string WebSocketAsyncGameConnection::DEFAULT_PORT = "80";
 }
 

@@ -5,14 +5,15 @@
 #include <vector>
 
 // Отключить предупреждения в этих библиотеках
-#pragma warning(push, 0)  
+#pragma warning(push, 0)
+#pragma warning(disable: 26820 26812 26498 26495 26451 26439 26444)
+#pragma warning(disable: 6388 6387 6385 6258 6255 6001)
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #pragma warning(pop)
 
-#include <cstdlib>
 #include <unordered_map>
 #include <set>
 #include <thread>
@@ -274,7 +275,7 @@ namespace conn
 
 
 	/*
-	* Класс поддерживающий соединение с сервером использую веб сокеты
+	* Класс, поддерживающий соединение с сервером использую веб сокеты
 	* Принимает сообщения асинхронно
 	*/
 	class WebSocketAsyncGameConnection : public GameConnection
